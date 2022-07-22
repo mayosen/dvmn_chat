@@ -12,10 +12,10 @@ def format_log(message: str):
 
 
 async def tcp_client(host: str, port: int, path: str):
-    reader, writer = await asyncio.open_connection(host, port)
+    reader, _ = await asyncio.open_connection(host, port)
 
     async with aiofiles.open(f"{path}/logs.txt", "a") as log_file:
-        log = format_log("Установлено соединение\n")
+        log = format_log("--- Установлено соединение ---\n")
         await log_file.write(log)
 
         while True:
