@@ -9,7 +9,7 @@ $ pip install -r requirements.txt
 ```
 Настройте клиент через переменные окружения
 ```bash
-$ export SERVER_HOST="" SERVER_PORT="" HISTORY_PATH=""
+$ export SERVER_HOST="" SERVER_PORT=0 HISTORY_PATH=""
 ```
 Или через аргументы командной строки
 ```
