@@ -6,24 +6,7 @@ from os import environ
 
 import aiofiles
 
-
-def format_log(message: str):
-    return f"[{datetime.now().strftime('%H:%M:%S')}] {message}"
-
-
-async def tcp_client(host: str, port: int, path: str):
-    reader, _ = await asyncio.open_connection(host, port)
-
-    async with aiofiles.open(f"{path}/logs.txt", "a") as log_file:
-        log = format_log("--- Установлено соединение ---\n")
-        await log_file.write(log)
-
-        while True:
-            incoming_bytes = await reader.readline()
-            message = incoming_bytes.decode("utf-8")
-            log = format_log(message)
-            print(log, end="")
-            await log_file.write(log)
+from utils import decode
 
 
 @dataclass
@@ -49,6 +32,26 @@ class Config:
         history = history.strip("/")
 
         return Config(host, port, history)
+
+
+def format_log(message: str) -> str:
+    return f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n"
+
+
+async def tcp_client(host: str, port: int, path: str):
+    reader, _ = await asyncio.open_connection(host, port)
+
+    async with aiofiles.open(f"{path}/logs.txt", "a") as log_file:
+        log = format_log("--- Установлено соединение ---")
+        print(log, end="")
+        await log_file.write(f"{log}")
+
+        while True:
+            response = await reader.readline()
+            message = decode(response)
+            log = format_log(message)
+            print(log, end="")
+            await log_file.write(log)
 
 
 if __name__ == "__main__":
