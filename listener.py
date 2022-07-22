@@ -43,7 +43,7 @@ class Config:
         host = args.host or environ.get("SERVER_HOST")
         port = args.port or environ.get("SERVER_PORT")
         history = args.history or environ.get("HISTORY_PATH")
-        assert (all([host, port, history])), "Need to configure project"
+        assert all([host, port, history]), "Need to configure project"
 
         port = int(port)
         history = history.strip("/")
