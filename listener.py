@@ -23,10 +23,9 @@ class Config:
         parser.add_argument("--history", type=str, help="Path to logs")
         args = parser.parse_args()
 
-        host = args.host or environ.get("SERVER_HOST")
-        port = args.port or environ.get("SERVER_PORT")
-        history = args.history or environ.get("HISTORY_PATH")
-        assert all([host, port, history]), "Need to configure project"
+        host = args.host or environ.get("SERVER_HOST") or "minechat.dvmn.org"
+        port = args.port or environ.get("SERVER_PORT") or 5000
+        history = args.history or environ.get("HISTORY_PATH") or "."
 
         port = int(port)
         history = history.strip("/")

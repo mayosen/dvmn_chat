@@ -1,12 +1,9 @@
 import asyncio
 import json
-import logging
 from argparse import ArgumentParser
 from asyncio import StreamReader, StreamWriter
 from dataclasses import dataclass
 from os import environ
-
-import aiofiles
 
 from utils import decode, encode
 
@@ -15,83 +12,88 @@ from utils import decode, encode
 class Config:
     host: str
     port: int
-    credentials: str
+    user_hash: str
+    nickname: str
+    message: str
 
     @staticmethod
     def parse():
-        parser = ArgumentParser()
+        parser = ArgumentParser(description="Pass exactly one option: --hash or --nickname.")
         parser.add_argument("--host", type=str, help="Server host")
         parser.add_argument("--port", type=int, help="Server port")
-        parser.add_argument("--credentials", type=str, help="Path to credentials")
+        parser.add_argument("--hash", type=str, help="Account hash to access host")
+        parser.add_argument("--nickname", type=str, help="Preferred nickname to register")
+        parser.add_argument("--message", type=str, help="Message to send")
         args = parser.parse_args()
 
-        host = args.host or environ.get("SERVER_HOST")
-        port = args.port or environ.get("SERVER_PORT")
-        credentials = args.credentials or environ.get("CREDENTIALS_PATH")
-        assert all([host, port, credentials]), "Need to configure project"
+        host = args.host or environ.get("SERVER_HOST") or "minechat.dvmn.org"
+        port = args.port or environ.get("SERVER_PORT") or 5050
+        user_hash = args.hash or environ.get("USER_HASH")
+        nickname = args.nickname or environ.get("NICKNAME")
+        message = args.message or environ.get("MESSAGE")
 
+        assert bool(user_hash) != bool(nickname), "Pass exactly one option: --hash or --nickname"
+        assert message, "Pass message option"
         port = int(port)
-        credentials = credentials.strip("/")
 
-        return Config(host, port, credentials)
+        return Config(host, port, user_hash, nickname, message)
 
-
-async def register(reader: StreamReader, writer: StreamWriter, path: str):
-    writer.write(encode(""))
-    logging.debug(f"Reader: {decode(await reader.readline())}")
-
-    nickname = input()
-    writer.write(encode(nickname))
-    credentials = decode(await reader.readline())
-    logging.debug(f"Reader: {credentials}")
-
-    async with aiofiles.open(f"{path}/credentials.json", "w") as file:
-        await file.write(credentials)
+    @property
+    def kwargs(self):
+        return self.__dict__
 
 
-async def authorize(reader: StreamReader, writer: StreamWriter, user_hash: str) -> bool:
-    writer.write(encode(user_hash))
-    response = decode(await reader.readline())
-    logging.debug(f"Reader: {response}")
-
-    if not json.loads(response):
-        logging.debug("Неизвестный токен. Проверьте его или зарегистрируйте заново.")
-        return False
-
-    return True
-
-
-def submit_message(writer: StreamWriter):
-    message = input()
-    writer.write(encode(message + "\n"))
-
-
-async def client(host: str, port: int, path: str):
+async def register(host: str, port: int, nickname: str) -> str:
     reader, writer = await asyncio.open_connection(host, port)
-    response = await reader.readline()
-    logging.debug(f"Reader: {decode(response)}")
-    user_message = input()
-
-    if not user_message:
-        await register(reader, writer, path)
-    else:
-        if not await authorize(reader, writer, user_message):
-            return
-
-    logging.debug(f"Reader: {decode(await reader.readline())}")
-    submit_message(writer)
-    logging.debug(f"Reader: {decode(await reader.readline())}")
-
+    await reader.readline()  # Hello username
+    writer.write(encode(""))
+    await reader.readline()  # Enter preferred nickname
+    nickname = nickname.replace("\n", "")
+    writer.write(encode(nickname))
+    response = decode(await reader.readline())
     writer.close()
     await writer.wait_closed()
+    return json.loads(response)["account_hash"]
+
+
+class InvalidHash(Exception):
+    """Invalid account_hash."""
+
+
+async def authorize(reader: StreamReader, writer: StreamWriter, user_hash: str):
+    await reader.readline()  # Enter hash
+    writer.write(encode(user_hash))
+    response = decode(await reader.readline())
+    user_info = json.loads(response)
+    print(user_info)  # Credentials
+
+    if not user_info:
+        raise InvalidHash
+
+
+async def submit_message(reader: StreamReader, writer: StreamWriter, message: str):
+    await reader.readline()  # Welcome to chat
+    message = message.replace("\n", "")
+    writer.write(encode(message + "\n"))
+    await reader.readline()  # Write more
+
+
+async def client(host: str, port: int, user_hash: str, nickname: str, message: str):
+    if nickname:
+        user_hash = await register(host, port, nickname)
+
+    reader, writer = await asyncio.open_connection(host, port)
+
+    try:
+        await authorize(reader, writer, user_hash)
+        await submit_message(reader, writer, message)
+    except InvalidHash:
+        print("Неизвестный токен. Проверьте его или зарегистрируйте заново.")
+    finally:
+        writer.close()
+        await writer.wait_closed()
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        format=u"%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-        level=logging.DEBUG,
-        datefmt="%H:%M:%S",
-    )
     config = Config.parse()
-
-    asyncio.run(client(config.host, config.port, config.credentials))
+    asyncio.run(client(**config.kwargs))
