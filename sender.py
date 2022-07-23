@@ -63,9 +63,9 @@ class InvalidHash(Exception):
 async def authorize(reader: StreamReader, writer: StreamWriter, user_hash: str):
     await reader.readline()  # Enter hash
     writer.write(encode(user_hash))
-    response = decode(await reader.readline())
+    response = decode(await reader.readline())  # Credentials
     user_info = json.loads(response)
-    print(user_info)  # Credentials
+    print(user_info)
 
     if not user_info:
         raise InvalidHash
