@@ -47,9 +47,13 @@ async def register(host: str, port: int, nickname: str) -> str:
     async with safe_connection(host, port) as (reader, writer):
         await reader.readline()  # Hello username
         writer.write(encode(""))
+        await writer.drain()
+
         await reader.readline()  # Enter preferred nickname
         nickname = nickname.replace("\n", "")
         writer.write(encode(nickname))
+        await writer.drain()
+
         response = decode(await reader.readline())
         return json.loads(response)["account_hash"]
 
@@ -61,6 +65,8 @@ class InvalidHash(Exception):
 async def authorize(reader: StreamReader, writer: StreamWriter, user_hash: str):
     await reader.readline()  # Enter hash
     writer.write(encode(user_hash))
+    await writer.drain()
+
     response = decode(await reader.readline())  # Credentials
     user_info = json.loads(response)
 
@@ -72,6 +78,7 @@ async def submit_message(reader: StreamReader, writer: StreamWriter, message: st
     await reader.readline()  # Welcome to chat
     message = message.replace("\n", "")
     writer.write(encode(message + "\n"))
+    await writer.drain()
     await reader.readline()  # Write more
 
 

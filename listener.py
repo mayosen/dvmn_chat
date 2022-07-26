@@ -19,7 +19,7 @@ class Config:
         parser = ArgumentParser()
         parser.add_argument("--host", type=str, help="Server host")
         parser.add_argument("--port", type=int, help="Server port")
-        parser.add_argument("--history", type=str, help="Path to logs")
+        parser.add_argument("--history", type=str, help="Relative path to logs")
         args = parser.parse_args()
 
         host = args.host or environ.get("SERVER_HOST") or "minechat.dvmn.org"
@@ -33,7 +33,7 @@ class Config:
 
 
 async def listen_socket(host: str, port: int, path: str):
-    async with safe_connection(host, port) as (reader, writer):
+    async with safe_connection(host, port) as (reader, _):
         async with aiofiles.open(f"{path}/logs.txt", "a") as log_file:
             log = format_log("--- Установлено соединение ---")
             print(log, end="")
