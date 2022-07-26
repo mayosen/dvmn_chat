@@ -65,7 +65,6 @@ async def authorize(reader: StreamReader, writer: StreamWriter, user_hash: str):
     writer.write(encode(user_hash))
     response = decode(await reader.readline())  # Credentials
     user_info = json.loads(response)
-    print(user_info)
 
     if not user_info:
         raise InvalidHash
@@ -78,7 +77,7 @@ async def submit_message(reader: StreamReader, writer: StreamWriter, message: st
     await reader.readline()  # Write more
 
 
-async def client(host: str, port: int, user_hash: str, nickname: str, message: str):
+async def send_message(host: str, port: int, user_hash: str, nickname: str, message: str):
     if nickname:
         user_hash = await register(host, port, nickname)
 
@@ -96,4 +95,4 @@ async def client(host: str, port: int, user_hash: str, nickname: str, message: s
 
 if __name__ == "__main__":
     config = Config.parse()
-    asyncio.run(client(**config.kwargs))
+    asyncio.run(send_message(**config.kwargs))

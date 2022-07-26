@@ -3,4 +3,4 @@ def decode(message: bytes) -> str:
 
 
 def encode(message: str) -> bytes:
-    return bytes(message + "\n", "utf-8")
+    return bytes(f"{message}\n", "utf-8")
