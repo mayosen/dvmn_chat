@@ -5,7 +5,7 @@ from asyncio import StreamReader, StreamWriter
 from dataclasses import dataclass
 from os import environ
 
-from utils import decode, encode
+from utils import decode, encode, safe_connection
 
 
 @dataclass
@@ -44,16 +44,14 @@ class Config:
 
 
 async def register(host: str, port: int, nickname: str) -> str:
-    reader, writer = await asyncio.open_connection(host, port)
-    await reader.readline()  # Hello username
-    writer.write(encode(""))
-    await reader.readline()  # Enter preferred nickname
-    nickname = nickname.replace("\n", "")
-    writer.write(encode(nickname))
-    response = decode(await reader.readline())
-    writer.close()
-    await writer.wait_closed()
-    return json.loads(response)["account_hash"]
+    async with safe_connection(host, port) as (reader, writer):
+        await reader.readline()  # Hello username
+        writer.write(encode(""))
+        await reader.readline()  # Enter preferred nickname
+        nickname = nickname.replace("\n", "")
+        writer.write(encode(nickname))
+        response = decode(await reader.readline())
+        return json.loads(response)["account_hash"]
 
 
 class InvalidHash(Exception):
@@ -81,16 +79,12 @@ async def send_message(host: str, port: int, user_hash: str, nickname: str, mess
     if nickname:
         user_hash = await register(host, port, nickname)
 
-    reader, writer = await asyncio.open_connection(host, port)
-
-    try:
-        await authorize(reader, writer, user_hash)
-        await submit_message(reader, writer, message)
-    except InvalidHash:
-        print("Неизвестный токен. Проверьте его или зарегистрируйте заново.")
-    finally:
-        writer.close()
-        await writer.wait_closed()
+    async with safe_connection(host, port) as (reader, writer):
+        try:
+            await authorize(reader, writer, user_hash)
+            await submit_message(reader, writer, message)
+        except InvalidHash:
+            print("Неизвестный токен. Проверьте его или зарегистрируйте заново.")
 
 
 if __name__ == "__main__":
