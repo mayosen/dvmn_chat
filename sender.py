@@ -2,49 +2,34 @@ import asyncio
 import json
 from argparse import ArgumentParser
 from asyncio import StreamReader, StreamWriter
-from dataclasses import dataclass
 from os import environ
 
-from utils import decode, encode, safe_connection
+from utils import decode, encode, open_connection
 
 
-@dataclass
-class Config:
-    host: str
-    port: int
-    user_hash: str
-    nickname: str
-    message: str
+def parse_config():
+    parser = ArgumentParser(description="Pass exactly one option: --hash or --nickname.")
+    parser.add_argument("--host", type=str, help="Server host")
+    parser.add_argument("--port", type=int, help="Server port")
+    parser.add_argument("--hash", type=str, help="Account hash to access host")
+    parser.add_argument("--nickname", type=str, help="Preferred nickname to register")
+    parser.add_argument("--message", type=str, help="Message to send")
+    args = parser.parse_args()
 
-    @staticmethod
-    def parse():
-        parser = ArgumentParser(description="Pass exactly one option: --hash or --nickname.")
-        parser.add_argument("--host", type=str, help="Server host")
-        parser.add_argument("--port", type=int, help="Server port")
-        parser.add_argument("--hash", type=str, help="Account hash to access host")
-        parser.add_argument("--nickname", type=str, help="Preferred nickname to register")
-        parser.add_argument("--message", type=str, help="Message to send")
-        args = parser.parse_args()
+    host = args.host or environ.get("SERVER_HOST", "minechat.dvmn.org")
+    port = args.port or environ.get("SERVER_PORT", 5050)
+    user_hash = args.hash or environ.get("USER_HASH")
+    nickname = args.nickname or environ.get("NICKNAME")
+    message = args.message or environ.get("MESSAGE")
 
-        host = args.host or environ.get("SERVER_HOST") or "minechat.dvmn.org"
-        port = args.port or environ.get("SERVER_PORT") or 5050
-        user_hash = args.hash or environ.get("USER_HASH")
-        nickname = args.nickname or environ.get("NICKNAME")
-        message = args.message or environ.get("MESSAGE")
+    assert bool(user_hash) != bool(nickname), "Pass exactly one option: --hash or --nickname"
+    assert message, "Pass message option"
 
-        assert bool(user_hash) != bool(nickname), "Pass exactly one option: --hash or --nickname"
-        assert message, "Pass message option"
-        port = int(port)
-
-        return Config(host, port, user_hash, nickname, message)
-
-    @property
-    def kwargs(self):
-        return self.__dict__
+    return host, port, user_hash, nickname, message
 
 
 async def register(host: str, port: int, nickname: str) -> str:
-    async with safe_connection(host, port) as (reader, writer):
+    async with open_connection(host, port) as (reader, writer):
         await reader.readline()  # Hello username
         writer.write(encode(""))
         await writer.drain()
@@ -86,7 +71,7 @@ async def send_message(host: str, port: int, user_hash: str, nickname: str, mess
     if nickname:
         user_hash = await register(host, port, nickname)
 
-    async with safe_connection(host, port) as (reader, writer):
+    async with open_connection(host, port) as (reader, writer):
         try:
             await authorize(reader, writer, user_hash)
             await submit_message(reader, writer, message)
@@ -95,5 +80,5 @@ async def send_message(host: str, port: int, user_hash: str, nickname: str, mess
 
 
 if __name__ == "__main__":
-    config = Config.parse()
-    asyncio.run(send_message(**config.kwargs))
+    config_args = parse_config()
+    asyncio.run(send_message(*config_args))

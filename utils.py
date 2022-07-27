@@ -18,7 +18,7 @@ def encode(message: str) -> bytes:
 
 
 @asynccontextmanager
-async def safe_connection(host: str, port: int) -> AsyncContextManager[tuple[StreamReader, StreamWriter]]:
+async def open_connection(host: str, port: int):
     reader, writer = await asyncio.open_connection(host, port)
     try:
         yield reader, writer
