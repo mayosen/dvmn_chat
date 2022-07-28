@@ -22,8 +22,10 @@ def parse_config():
     nickname = args.nickname or environ.get("NICKNAME")
     message = args.message or environ.get("MESSAGE")
 
-    assert bool(user_hash) != bool(nickname), "Pass exactly one option: --hash or --nickname"
-    assert message, "Pass message option"
+    if bool(user_hash) == bool(nickname):
+        raise KeyError("Pass exactly one option: --hash or --nickname")
+    if not message:
+        raise KeyError("Pass message option")
 
     return host, port, user_hash, nickname, message
 
