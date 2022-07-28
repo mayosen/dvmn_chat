@@ -1,8 +1,9 @@
 import asyncio
-from asyncio import StreamReader, StreamWriter
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import AsyncContextManager
+
+
+ENCODING = "utf-8"
 
 
 def format_log(message: str) -> str:
@@ -10,11 +11,11 @@ def format_log(message: str) -> str:
 
 
 def decode(message: bytes) -> str:
-    return message.decode("utf-8").rstrip("\n")
+    return message.decode(ENCODING).rstrip("\n")
 
 
 def encode(message: str) -> bytes:
-    return bytes(f"{message}\n", "utf-8")
+    return bytes(f"{message}\n", ENCODING)
 
 
 @asynccontextmanager
