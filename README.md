@@ -36,8 +36,7 @@ $ python listener.py
 ### sender.py
 Настройте скрипт через переменные окружения
 ```bash
-$ export SERVER_HOST="" SERVER_PORT=0 USER_HASH="" \
-  NICKNAME="" MESSAGE=""
+$ export SERVER_HOST="" SERVER_PORT=0 USER_HASH="" NICKNAME="" MESSAGE=""
 ```
 
 Или через аргументы командной строки
