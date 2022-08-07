@@ -43,7 +43,7 @@ async def update_tk(root_frame: tk.Frame, interval=1/120):
         try:
             root_frame.update()
         except tk.TclError:
-            raise TkAppClosed()
+            raise TkAppClosed
         await asyncio.sleep(interval)
 
 

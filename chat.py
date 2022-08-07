@@ -3,16 +3,21 @@ import json
 from argparse import ArgumentParser
 from os import environ
 from asyncio import Queue
+from tkinter import messagebox
 
 import aiofiles
 
-from gui import draw
+from gui import draw, NicknameReceived, SendingConnectionStateChanged, ReadConnectionStateChanged
 from utils import open_connection, decode, format_log, encode
 
 
 # TODO: README
 # TODO: Писать в логи статусы
 # TODO: Убрать отладочные print
+
+
+class InvalidToken(Exception):
+    """Invalid account_hash."""
 
 
 def parse_config():
@@ -34,8 +39,10 @@ def parse_config():
     return host, listen_port, send_port, path, user_hash
 
 
-async def read_messages(host: str, port: int, messages_queue: Queue, save_queue: Queue):
+async def read_messages(host: str, port: int, messages_queue: Queue, save_queue: Queue, updates: Queue):
+    updates.put_nowait(ReadConnectionStateChanged.INITIATED)
     async with open_connection(host, port) as (reader, writer):
+        updates.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
         while True:
             message = decode(await reader.readline())
             messages_queue.put_nowait(message)
@@ -55,14 +62,20 @@ def read_history(filepath: str):
         return messages
 
 
-async def send_messages(host: str, port: int, user_hash: str, sending_queue: Queue):
+async def send_messages(host: str, port: int, user_hash: str, sending_queue: Queue, updates: Queue):
+    updates.put_nowait(SendingConnectionStateChanged.INITIATED)
     async with open_connection(host, port) as (reader, writer):
+        updates.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
         await reader.readline()  # Enter hash
         writer.write(encode(user_hash))
         await writer.drain()
 
         response = decode(await reader.readline())
         user_info = json.loads(response)
+        if not user_info:
+            raise InvalidToken
+
+        updates.put_nowait(NicknameReceived(user_info["nickname"]))
         print(f"Выполнена авторизация. Пользователь {user_info['nickname']}.")
 
         while True:
@@ -82,12 +95,16 @@ async def main():
     save_queue = Queue()
     history = read_history(filepath)
 
-    await asyncio.gather(
-        draw(history, messages_queue, sending_queue, status_updates_queue),
-        read_messages(host, listen_port, messages_queue, save_queue),
-        save_messages(filepath, save_queue),
-        send_messages(host, send_port, user_hash, sending_queue),
-    )
+    try:
+        await asyncio.gather(
+            draw(history, messages_queue, sending_queue, status_updates_queue),
+            read_messages(host, listen_port, messages_queue, save_queue, status_updates_queue),
+            save_messages(filepath, save_queue),
+            send_messages(host, send_port, user_hash, sending_queue, status_updates_queue),
+        )
+    except InvalidToken:
+        messagebox.showerror("Неверный токен", "Проверьте токен, сервер его не узнал")
+        return
 
 
 asyncio.run(main())
