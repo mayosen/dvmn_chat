@@ -50,17 +50,30 @@ async def update_tk(root_frame: tk.Frame, interval=1/120):
 async def update_conversation_history(panel: ScrolledText, messages_queue: Queue):
     while True:
         msg = await messages_queue.get()
-        panel["state"] = "normal"
+        panel["state"] = tk.NORMAL
 
         if panel.index("end-1c") != "1.0":
-            panel.insert("end", "\n")
+            panel.insert(tk.END, "\n")
 
-        panel.insert("end", msg)
+        panel.insert(tk.END, msg)
         # TODO: Сделать промотку умной, чтобы не мешала просматривать историю сообщений
         # ScrolledText.frame
         # ScrolledText.vbar
         panel.yview(tk.END)
-        panel["state"] = "disabled"
+        panel["state"] = tk.DISABLED
+
+
+def write_history(panel: ScrolledText, messages: list[str]):
+    panel["state"] = tk.NORMAL
+
+    for message in messages:
+        if panel.index("end-1c") != "1.0":
+            panel.insert(tk.END, "\n")
+
+        panel.insert(tk.END, message)
+
+    panel.yview(tk.END)
+    panel["state"] = tk.DISABLED
 
 
 async def update_status_panel(status_labels: tuple[tk.Label, ...], status_updates_queue: Queue):
@@ -100,7 +113,7 @@ def create_status_panel(root_frame: tk.Frame):
     return nickname_label, status_read_label, status_write_label
 
 
-async def draw(messages_queue: Queue, sending_queue: Queue, status_updates_queue: Queue):
+async def draw(history: list[str], messages_queue: Queue, sending_queue: Queue, status_updates_queue: Queue):
     root = tk.Tk()
     root.title("Чат майнкрафтера")
 
@@ -125,6 +138,7 @@ async def draw(messages_queue: Queue, sending_queue: Queue, status_updates_queue
 
     conversation_panel = ScrolledText(root_frame, wrap="none")  # wrap - перенос слов
     conversation_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+    write_history(conversation_panel, history)
 
     await asyncio.gather(
         update_tk(root_frame),

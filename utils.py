@@ -7,7 +7,7 @@ ENCODING = "utf-8"
 
 
 def format_log(message: str) -> str:
-    return f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n"
+    return f"[{datetime.now().strftime('%d.%m %H:%M:%S')}] {message}\n"
 
 
 def decode(message: bytes) -> str:
