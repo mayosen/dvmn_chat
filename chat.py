@@ -41,8 +41,10 @@ def parse_config():
 
 async def read_messages(host: str, port: int, messages_queue: Queue, save_queue: Queue, updates: Queue):
     updates.put_nowait(ReadConnectionStateChanged.INITIATED)
+
     async with open_connection(host, port) as (reader, writer):
         updates.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
+
         while True:
             message = decode(await reader.readline())
             messages_queue.put_nowait(message)
@@ -64,6 +66,7 @@ def read_history(filepath: str):
 
 async def send_messages(host: str, port: int, user_hash: str, sending_queue: Queue, updates: Queue):
     updates.put_nowait(SendingConnectionStateChanged.INITIATED)
+
     async with open_connection(host, port) as (reader, writer):
         updates.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
         await reader.readline()  # Enter hash
@@ -72,6 +75,7 @@ async def send_messages(host: str, port: int, user_hash: str, sending_queue: Que
 
         response = decode(await reader.readline())
         user_info = json.loads(response)
+
         if not user_info:
             raise InvalidToken
 
