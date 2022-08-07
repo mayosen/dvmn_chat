@@ -59,6 +59,7 @@ async def update_conversation_history(panel: ScrolledText, messages_queue: Queue
         # TODO: Сделать промотку умной, чтобы не мешала просматривать историю сообщений
         # ScrolledText.frame
         # ScrolledText.vbar
+        # TODO: Устранить тряску при наборе сообщения
         panel.yview(tk.END)
         panel["state"] = tk.DISABLED
 
