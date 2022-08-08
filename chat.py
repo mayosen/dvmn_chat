@@ -46,11 +46,16 @@ async def read_messages(
     updates.put_nowait(ReadConnectionStateChanged.INITIATED)
 
     async with open_connection(host, port) as (reader, writer):
-        updates.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
-        # TODO: Таймауты
-
         while True:
-            response = await reader.readline()
+            try:
+                async with timeout(1):
+                    response = await reader.readline()
+                    updates.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
+            except asyncio.TimeoutError:
+                logging.warning("1s timeout is elapsed")
+                updates.put_nowait(ReadConnectionStateChanged.CLOSED)
+                continue
+
             message = decode(response)
             watchdog.put_nowait(f"Connection is alive. New message in chat")
             messages_queue.put_nowait(message)
