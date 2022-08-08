@@ -61,8 +61,7 @@ def read_history(filepath: str):
     filename = f"{filepath}/logs.txt"
 
     if not os.path.exists(filename):
-        with open(filename, "w"):
-            pass
+        return []
 
     with open(filename, "r") as logs:
         messages = [line.rstrip("\n") for line in logs.readlines()]
