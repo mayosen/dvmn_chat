@@ -146,9 +146,9 @@ async def main():
         messagebox.showwarning("Неверный токен", "Проверьте токен, сервер его не узнал")
         return
     except TkAppClosed:
-        # TODO: Обработка
         logging.debug("Клиент закрыт")
-        pass
+        return
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
