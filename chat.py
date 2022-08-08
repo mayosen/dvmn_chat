@@ -144,10 +144,10 @@ async def main():
         )
     except InvalidToken:
         messagebox.showwarning("Неверный токен", "Проверьте токен, сервер его не узнал")
+        logging.warning("Неверный токен")
         return
     except TkAppClosed:
         logging.debug("Клиент закрыт")
-        return
 
 
 if __name__ == "__main__":
