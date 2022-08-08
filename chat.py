@@ -8,6 +8,7 @@ from asyncio import Queue
 from tkinter import messagebox
 
 import aiofiles
+from async_timeout import timeout
 
 from gui import draw, NicknameReceived, SendingConnectionStateChanged, ReadConnectionStateChanged, TkAppClosed
 from utils import open_connection, decode, format_log, encode
@@ -46,10 +47,12 @@ async def read_messages(
 
     async with open_connection(host, port) as (reader, writer):
         updates.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
+        # TODO: Таймауты
 
         while True:
-            message = decode(await reader.readline())
-            watchdog.put_nowait(f"New message in chat")
+            response = await reader.readline()
+            message = decode(response)
+            watchdog.put_nowait(f"Connection is alive. New message in chat")
             messages_queue.put_nowait(message)
             save_queue.put_nowait(message)
 
@@ -79,9 +82,11 @@ async def send_messages(
     updates.put_nowait(SendingConnectionStateChanged.INITIATED)
 
     async with open_connection(host, port) as (reader, writer):
+        # TODO: Таймауты
+
         updates.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
         await reader.readline()  # Enter hash
-        watchdog.put_nowait("Prompt before auth")
+        watchdog.put_nowait("Connection is alive. Prompt before auth")
         writer.write(encode(user_hash))
         await writer.drain()
 
@@ -91,14 +96,14 @@ async def send_messages(
         if not user_info:
             raise InvalidToken
 
-        watchdog.put_nowait("Authorization done")
+        watchdog.put_nowait("Connection is alive. Authorization done")
         updates.put_nowait(NicknameReceived(user_info["nickname"]))
 
         while True:
             message = await sending_queue.get()
             message = message.replace("\n", "")
             writer.write(encode(f"{message}\n"))
-            watchdog.put_nowait("Message sent")
+            watchdog.put_nowait("Connection is alive. Message sent")
             await writer.drain()
 
 
