@@ -5,6 +5,9 @@ from enum import Enum
 from tkinter.scrolledtext import ScrolledText
 
 
+# TODO: Устранить тряску при наборе сообщения
+
+
 class TkAppClosed(Exception):
     """Tkinter application closed."""
 
@@ -59,7 +62,7 @@ async def update_conversation_history(panel: ScrolledText, messages_queue: Queue
         # TODO: Сделать промотку умной, чтобы не мешала просматривать историю сообщений
         # ScrolledText.frame
         # ScrolledText.vbar
-        # TODO: Устранить тряску при наборе сообщения
+
         panel.yview(tk.END)
         panel["state"] = tk.DISABLED
 
@@ -137,7 +140,7 @@ async def draw(history: list[str], messages_queue: Queue, sending_queue: Queue, 
     )
     send_button.pack(side="right")
 
-    conversation_panel = ScrolledText(root_frame, wrap="none")  # wrap - перенос слов
+    conversation_panel = ScrolledText(root_frame, wrap=tk.NONE)
     conversation_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
     write_history(conversation_panel, history)
 
