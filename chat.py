@@ -14,9 +14,6 @@ from gui import draw, NicknameReceived, SendingConnectionStateChanged, ReadConne
 from utils import open_connection, decode, format_log, encode
 
 
-# TODO: README
-
-
 class InvalidToken(Exception):
     """Invalid account_hash."""
 
@@ -31,8 +28,8 @@ def parse_config():
     args = parser.parse_args()
 
     host = args.host or environ.get("SERVER_HOST", "minechat.dvmn.org")
-    listen_port = args.listen or environ.get("SERVER_LISTEN_PORT", 5000)
-    send_port = args.send or environ.get("SERVER_SEND_PORT", 5050)
+    listen_port = args.listen or environ.get("LISTEN_PORT", 5000)
+    send_port = args.send or environ.get("SEND_PORT", 5050)
     path = args.path or environ.get("LOG_PATH", ".")
     path.strip("/")
     user_hash = args.hash or environ.get("USER_HASH")
