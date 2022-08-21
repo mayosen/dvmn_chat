@@ -29,5 +29,5 @@ $ export SERVER_HOST="" \
 
 Запустите проект
 ```bash
-$ python chat.py --hash 
+$ python chat.py --hash <YOUR_HASH>
 ```
