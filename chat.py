@@ -14,6 +14,9 @@ from gui import draw, NicknameReceived, SendingConnectionStateChanged, ReadConne
 from utils import open_connection, decode, format_log, encode
 
 
+TIMEOUT_SEC = 1
+
+
 class InvalidToken(Exception):
     """Invalid account_hash."""
 
@@ -45,16 +48,16 @@ async def read_messages(
     async with open_connection(host, port) as (reader, writer):
         while True:
             try:
-                async with timeout(1):
+                async with timeout(TIMEOUT_SEC):
                     response = await reader.readline()
                     updates.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
             except asyncio.TimeoutError:
-                logging.warning("1s timeout is elapsed")
+                logging.warning("Timeout has elapsed")
                 updates.put_nowait(ReadConnectionStateChanged.CLOSED)
                 continue
 
             message = decode(response)
-            watchdog.put_nowait(f"Connection is alive. New message in chat")
+            watchdog.put_nowait(f"New message in chat")
             messages_queue.put_nowait(message)
             save_queue.put_nowait(message)
 
@@ -87,7 +90,7 @@ async def send_messages(
 
         updates.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
         await reader.readline()  # Enter hash
-        watchdog.put_nowait("Connection is alive. Prompt before auth")
+        watchdog.put_nowait("Prompt before auth")
         writer.write(encode(user_hash))
         await writer.drain()
 
@@ -97,14 +100,14 @@ async def send_messages(
         if not user_info:
             raise InvalidToken
 
-        watchdog.put_nowait("Connection is alive. Authorization done")
+        watchdog.put_nowait("Authorization done")
         updates.put_nowait(NicknameReceived(user_info["nickname"]))
 
         while True:
             message = await sending_queue.get()
             message = message.replace("\n", "")
             writer.write(encode(f"{message}\n"))
-            watchdog.put_nowait("Connection is alive. Message sent")
+            watchdog.put_nowait("Message sent")
             await writer.drain()
 
 
@@ -141,10 +144,10 @@ async def main():
         )
     except InvalidToken:
         messagebox.showwarning("Неверный токен", "Проверьте токен, сервер его не узнал")
-        logging.warning("Неверный токен")
+        logging.warning("Invalid account_hash")
         return
     except TkAppClosed:
-        logging.debug("Клиент закрыт")
+        logging.debug("Client has been closed")
 
 
 if __name__ == "__main__":

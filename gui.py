@@ -37,8 +37,9 @@ class NicknameReceived:
 
 def process_new_message(input_field: tk.Entry, sending_queue: Queue):
     text = input_field.get()
-    sending_queue.put_nowait(text)
-    input_field.delete(0, tk.END)
+    if text:
+        sending_queue.put_nowait(text)
+        input_field.delete(0, tk.END)
 
 
 async def update_tk(root_frame: tk.Frame, interval=1/120):
