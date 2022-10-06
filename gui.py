@@ -1,11 +1,11 @@
 import asyncio
+import logging
 import tkinter as tk
 from asyncio import Queue
 from enum import Enum
 from tkinter.scrolledtext import ScrolledText
 
-
-# TODO: Устранить тряску при наборе сообщения
+logger = logging.getLogger(__name__)
 
 
 class TkAppClosed(Exception):
@@ -37,6 +37,7 @@ class NicknameReceived:
 
 def process_new_message(input_field: tk.Entry, sending_queue: Queue):
     text = input_field.get()
+
     if text:
         sending_queue.put_nowait(text)
         input_field.delete(0, tk.END)
@@ -60,11 +61,15 @@ async def update_conversation_history(panel: ScrolledText, messages_queue: Queue
             panel.insert(tk.END, "\n")
 
         panel.insert(tk.END, msg)
-        # TODO: Сделать промотку умной, чтобы не мешала просматривать историю сообщений
-        # ScrolledText.frame
-        # ScrolledText.vbar
 
-        panel.yview(tk.END)
+        # Умная промотка: https://stackoverflow.com/a/51781603
+        _, y = panel.yview()
+        logger.debug("y = %.2f", y)
+
+        if round(y, 1) == 1.0:
+            logger.debug("Scrolling down")
+            panel.yview(tk.END)
+
         panel["state"] = tk.DISABLED
 
 
@@ -135,11 +140,11 @@ async def draw(history: list[str], messages_queue: Queue, sending_queue: Queue, 
     input_field.bind("<Return>", lambda event: process_new_message(input_field, sending_queue))
 
     send_button = tk.Button(
-        input_field,
+        input_frame,
         text="Отправить",
         command=lambda: process_new_message(input_field, sending_queue)
     )
-    send_button.pack(side="right")
+    send_button.pack(side=tk.RIGHT)
 
     conversation_panel = ScrolledText(root_frame, wrap=tk.NONE)
     conversation_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)

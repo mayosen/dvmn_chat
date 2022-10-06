@@ -8,7 +8,7 @@
 $ pip install -r requirements.txt
 ```
 
-Настройте скрипт через переменные окружения
+Настройте скрипт через переменные окружения или аргументы CLI
 ```bash
 $ export SERVER_HOST="" \
   LISTEN_PORT=0 \
@@ -17,17 +17,7 @@ $ export SERVER_HOST="" \
   USER_HASH="" \
 ```
 
-Или через аргументы командной строки
-```
-  -h, --help       show this help message and exit
-  --host HOST      Server host
-  --listen LISTEN  Server listen port
-  --send SEND      Server send port
-  --path PATH      Relative path to logs file
-  --hash HASH      Account hash to access host
-```
-
 Запустите проект
 ```bash
-$ python chat.py --hash <YOUR_HASH>
+$ python chat.py
 ```
