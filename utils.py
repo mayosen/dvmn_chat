@@ -26,3 +26,6 @@ async def open_connection(host: str, port: int):
     finally:
         writer.close()
         await writer.wait_closed()
+
+
+# TODO: Обрабатывать ошибку, когда интернета нет изначально

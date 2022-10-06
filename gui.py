@@ -1,11 +1,9 @@
-import asyncio
-import logging
 import tkinter as tk
 from asyncio import Queue
 from enum import Enum
 from tkinter.scrolledtext import ScrolledText
 
-logger = logging.getLogger(__name__)
+import anyio
 
 
 class TkAppClosed(Exception):
@@ -49,7 +47,7 @@ async def update_tk(root_frame: tk.Frame, interval=1/120):
             root_frame.update()
         except tk.TclError:
             raise TkAppClosed
-        await asyncio.sleep(interval)
+        await anyio.sleep(interval)
 
 
 async def update_conversation_history(panel: ScrolledText, messages_queue: Queue):
@@ -64,10 +62,7 @@ async def update_conversation_history(panel: ScrolledText, messages_queue: Queue
 
         # Умная промотка: https://stackoverflow.com/a/51781603
         _, y = panel.yview()
-        logger.debug("y = %.2f", y)
-
         if round(y, 1) == 1.0:
-            logger.debug("Scrolling down")
             panel.yview(tk.END)
 
         panel["state"] = tk.DISABLED
@@ -150,8 +145,7 @@ async def draw(history: list[str], messages_queue: Queue, sending_queue: Queue, 
     conversation_panel.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
     write_history(conversation_panel, history)
 
-    await asyncio.gather(
-        update_tk(root_frame),
-        update_conversation_history(conversation_panel, messages_queue),
-        update_status_panel(status_labels, status_updates_queue),
-    )
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(update_tk, root_frame)
+        tg.start_soon(update_conversation_history, conversation_panel, messages_queue)
+        tg.start_soon(update_status_panel, status_labels, status_updates_queue)

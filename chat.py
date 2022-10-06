@@ -1,20 +1,22 @@
-import asyncio
 import json
 import logging
 import os.path
 from argparse import ArgumentParser
+from asyncio import Queue, TimeoutError
 from os import environ
-from asyncio import Queue
 from tkinter import messagebox
 
 import aiofiles
+import anyio
 from async_timeout import timeout
 
 from gui import draw, NicknameReceived, SendingConnectionStateChanged, ReadConnectionStateChanged, TkAppClosed
 from utils import open_connection, decode, format_log, encode
 
-
-TIMEOUT_SEC = 1
+logger = logging.getLogger("chat")
+TIMEOUT = 3
+PING_PONG_INTERVAL = 5
+RECONNECTION_INTERVALS = (5, 10, 15, 60, 600)
 
 
 class InvalidToken(Exception):
@@ -37,29 +39,96 @@ def parse_config():
     path.strip("/")
     user_hash = args.hash or environ.get("USER_HASH")
 
-    return host, listen_port, send_port, path, user_hash
+    return path, (host, listen_port, send_port, user_hash)
 
 
 async def read_messages(
-        host: str, port: int, messages_queue: Queue, save_queue: Queue, updates: Queue, watchdog: Queue
+        host: str,
+        port: int,
+        messages_queue: Queue,
+        save_queue: Queue,
+        updates_queue: Queue,
 ):
-    updates.put_nowait(ReadConnectionStateChanged.INITIATED)
+    updates_queue.put_nowait(ReadConnectionStateChanged.INITIATED)
+    updates_queue.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
 
     async with open_connection(host, port) as (reader, writer):
-        while True:
-            try:
-                async with timeout(TIMEOUT_SEC):
+        try:
+            while True:
+                async with timeout(TIMEOUT):
                     response = await reader.readline()
-                    updates.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
-            except asyncio.TimeoutError:
-                logging.warning("Timeout has elapsed")
-                updates.put_nowait(ReadConnectionStateChanged.CLOSED)
-                continue
 
-            message = decode(response)
-            watchdog.put_nowait(f"New message in chat")
-            messages_queue.put_nowait(message)
-            save_queue.put_nowait(message)
+                message = decode(response)
+                messages_queue.put_nowait(message)
+                save_queue.put_nowait(message)
+
+        except TimeoutError:
+            updates_queue.put_nowait(ReadConnectionStateChanged.CLOSED)
+            logger.error("Caught reading timeout")
+            raise ConnectionError
+
+
+async def send_messages(
+        host: str,
+        port: int,
+        user_hash: str,
+        sending_queue: Queue,
+        updates_queue: Queue,
+):
+    updates_queue.put_nowait(SendingConnectionStateChanged.INITIATED)
+    updates_queue.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
+
+    async with open_connection(host, port) as (reader, writer):
+        await reader.readline()
+        writer.write(encode(user_hash))
+        await writer.drain()
+
+        response = decode(await reader.readline())
+        user_info = json.loads(response)
+
+        if not user_info:
+            raise InvalidToken
+
+        updates_queue.put_nowait(NicknameReceived(user_info["nickname"]))
+
+        while True:
+            message = await sending_queue.get()
+            message = message.replace("\n", "")
+            writer.write(encode(f"{message}\n"))
+            await writer.drain()
+
+
+async def watch_for_sending(host: str, port: int, user_hash: str, updates_queue: Queue):
+    plug = encode("\n")
+
+    async with open_connection(host, port) as (reader, writer):
+        await reader.readline()
+        writer.write(encode(user_hash))
+        await writer.drain()
+        await reader.readline()
+        await reader.readline()
+
+        try:
+            while True:
+                writer.write(plug)
+                await writer.drain()
+
+                async with timeout(TIMEOUT):
+                    await reader.readline()
+
+                await anyio.sleep(PING_PONG_INTERVAL)
+
+        except TimeoutError:
+            logger.error("Caught sending timeout")
+            updates_queue.put_nowait(SendingConnectionStateChanged.CLOSED)
+            raise ConnectionError
+
+
+async def save_messages(filepath: str, save_queue: Queue):
+    async with aiofiles.open(f"{filepath}/logs.txt", "a") as logs:
+        while True:
+            message = await save_queue.get()
+            await logs.write(format_log(message))
 
 
 def read_history(filepath: str):
@@ -73,50 +142,23 @@ def read_history(filepath: str):
         return messages
 
 
-async def save_messages(filepath: str, save_queue: Queue):
-    async with aiofiles.open(f"{filepath}/logs.txt", "a") as logs:
-        while True:
-            message = await save_queue.get()
-            await logs.write(format_log(message))
-
-
-async def send_messages(
-        host: str, port: int, user_hash: str, sending_queue: Queue, updates: Queue, watchdog: Queue
+async def handle_connection(
+        config: tuple[str, int, int, str],
+        messages_queue: Queue,
+        sending_queue: Queue,
+        updates_queue: Queue,
+        save_queue: Queue,
 ):
-    updates.put_nowait(SendingConnectionStateChanged.INITIATED)
+    host, listen_port, send_port, user_hash = config
 
-    async with open_connection(host, port) as (reader, writer):
-        # TODO: Таймауты
+    try:
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(read_messages, host, listen_port, messages_queue, save_queue, updates_queue)
+            tg.start_soon(send_messages, host, send_port, user_hash, sending_queue, updates_queue)
+            tg.start_soon(watch_for_sending, host, send_port, user_hash, updates_queue)
 
-        updates.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
-        await reader.readline()  # Enter hash
-        watchdog.put_nowait("Prompt before auth")
-        writer.write(encode(user_hash))
-        await writer.drain()
-
-        response = decode(await reader.readline())
-        user_info = json.loads(response)
-
-        if not user_info:
-            raise InvalidToken
-
-        watchdog.put_nowait("Authorization done")
-        updates.put_nowait(NicknameReceived(user_info["nickname"]))
-
-        while True:
-            message = await sending_queue.get()
-            message = message.replace("\n", "")
-            writer.write(encode(f"{message}\n"))
-            watchdog.put_nowait("Message sent")
-            await writer.drain()
-
-
-async def watch_for_connection(watchdog_queue: Queue):
-    logger = logging.getLogger("watchdog_logger")
-
-    while True:
-        event = await watchdog_queue.get()
-        logger.debug(event)
+    except ConnectionError:
+        logger.error("Trying to reconnect")
 
 
 async def main():
@@ -125,30 +167,28 @@ async def main():
         datefmt="%H:%M:%S",
         level=logging.DEBUG,
     )
-    host, listen_port, send_port, filepath, user_hash = parse_config()
 
+    filepath, config = parse_config()
+    history = read_history(filepath)
     messages_queue = Queue()
     sending_queue = Queue()
-    status_updates_queue = Queue()
+    updates_queue = Queue()
     save_queue = Queue()
-    watchdog_queue = Queue()
-    history = read_history(filepath)
 
     try:
-        await asyncio.gather(
-            draw(history, messages_queue, sending_queue, status_updates_queue),
-            read_messages(host, listen_port, messages_queue, save_queue, status_updates_queue, watchdog_queue),
-            save_messages(filepath, save_queue),
-            send_messages(host, send_port, user_hash, sending_queue, status_updates_queue, watchdog_queue),
-            watch_for_connection(watchdog_queue),
-        )
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(draw, history, messages_queue, sending_queue, updates_queue)
+            tg.start_soon(save_messages, filepath, save_queue)
+            tg.start_soon(handle_connection, config, messages_queue, sending_queue, updates_queue, save_queue)
+
     except InvalidToken:
         messagebox.showwarning("Неверный токен", "Проверьте токен, сервер его не узнал")
-        logging.warning("Invalid account_hash")
+        logger.error("Invalid account_hash")
         return
+
     except TkAppClosed:
         logging.debug("Client has been closed")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main)
