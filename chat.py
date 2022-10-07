@@ -1,6 +1,7 @@
 import json
 import logging
 import os.path
+import socket
 from argparse import ArgumentParser
 from asyncio import Queue, TimeoutError
 from os import environ
@@ -16,7 +17,11 @@ from utils import open_connection, decode, format_log, encode
 logger = logging.getLogger("chat")
 TIMEOUT = 3
 PING_PONG_INTERVAL = 5
-RECONNECTION_INTERVALS = (5, 10, 15, 60, 600)
+retry_intervals = (0, 5, 10, 15, 30, 60)
+
+
+class TooManyRetries(Exception):
+    """Too many retries."""
 
 
 class InvalidToken(Exception):
@@ -142,6 +147,30 @@ def read_history(filepath: str):
         return messages
 
 
+def retry(intervals: tuple[int, ...]):
+    def func_wrapper(func):
+        async def wrapper(*args, **kwargs):
+            current_interval = 0
+
+            while current_interval < len(intervals):
+                interval = intervals[current_interval]
+
+                try:
+                    await func(*args, **kwargs)
+                    logger.debug("Successfully reconnected. Interval set to %d", interval[0])
+                    current_interval = 0
+
+                except (ConnectionError, socket.gaierror):
+                    logger.warning("Retrying with interval: %d", interval)
+                    await anyio.sleep(interval)
+                    current_interval += 1
+
+            raise TooManyRetries
+        return wrapper
+    return func_wrapper
+
+
+@retry(intervals=retry_intervals)
 async def handle_connection(
         config: tuple[str, int, int, str],
         messages_queue: Queue,
@@ -151,14 +180,10 @@ async def handle_connection(
 ):
     host, listen_port, send_port, user_hash = config
 
-    try:
-        async with anyio.create_task_group() as tg:
-            tg.start_soon(read_messages, host, listen_port, messages_queue, save_queue, updates_queue)
-            tg.start_soon(send_messages, host, send_port, user_hash, sending_queue, updates_queue)
-            tg.start_soon(watch_for_sending, host, send_port, user_hash, updates_queue)
-
-    except ConnectionError:
-        logger.error("Trying to reconnect")
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(read_messages, host, listen_port, messages_queue, save_queue, updates_queue)
+        tg.start_soon(send_messages, host, send_port, user_hash, sending_queue, updates_queue)
+        tg.start_soon(watch_for_sending, host, send_port, user_hash, updates_queue)
 
 
 async def main():
@@ -180,6 +205,11 @@ async def main():
             tg.start_soon(draw, history, messages_queue, sending_queue, updates_queue)
             tg.start_soon(save_messages, filepath, save_queue)
             tg.start_soon(handle_connection, config, messages_queue, sending_queue, updates_queue, save_queue)
+
+    except ConnectionError:
+        messagebox.showwarning("Ошибка подключения", "Проверьте ваше интернет-соединение")
+        logger.error("ConnectionError")
+        return
 
     except InvalidToken:
         messagebox.showwarning("Неверный токен", "Проверьте токен, сервер его не узнал")
