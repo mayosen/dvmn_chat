@@ -15,13 +15,9 @@ from gui import draw, NicknameReceived, SendingConnectionStateChanged, ReadConne
 from utils import open_connection, decode, format_log, encode
 
 logger = logging.getLogger("chat")
-TIMEOUT = 3
+TIMEOUT = 2
+RECONNECTION_INTERVAL = 3
 PING_PONG_INTERVAL = 5
-retry_intervals = (0, 5, 10, 15, 30, 60)
-
-
-class TooManyRetries(Exception):
-    """Too many retries."""
 
 
 class InvalidToken(Exception):
@@ -58,19 +54,11 @@ async def read_messages(
     updates_queue.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
 
     async with open_connection(host, port) as (reader, writer):
-        try:
-            while True:
-                async with timeout(TIMEOUT):
-                    response = await reader.readline()
-
-                message = decode(response)
-                messages_queue.put_nowait(message)
-                save_queue.put_nowait(message)
-
-        except TimeoutError:
-            updates_queue.put_nowait(ReadConnectionStateChanged.CLOSED)
-            logger.error("Caught reading timeout")
-            raise ConnectionError
+        while True:
+            response = await reader.readline()
+            message = decode(response)
+            messages_queue.put_nowait(message)
+            save_queue.put_nowait(message)
 
 
 async def send_messages(
@@ -126,6 +114,7 @@ async def watch_for_sending(host: str, port: int, user_hash: str, updates_queue:
         except TimeoutError:
             logger.error("Caught sending timeout")
             updates_queue.put_nowait(SendingConnectionStateChanged.CLOSED)
+            updates_queue.put_nowait(ReadConnectionStateChanged.CLOSED)
             raise ConnectionError
 
 
@@ -136,41 +125,22 @@ async def save_messages(filepath: str, save_queue: Queue):
             await logs.write(format_log(message))
 
 
-def read_history(filepath: str):
-    filename = f"{filepath}/logs.txt"
-
-    if not os.path.exists(filename):
-        return []
-
-    with open(filename, "r") as logs:
-        messages = [line.rstrip("\n") for line in logs.readlines()]
-        return messages
-
-
-def retry(intervals: tuple[int, ...]):
+def reconnect():
     def func_wrapper(func):
         async def wrapper(*args, **kwargs):
-            current_interval = 0
-
-            while current_interval < len(intervals):
-                interval = intervals[current_interval]
-
+            while True:
                 try:
                     await func(*args, **kwargs)
-                    logger.debug("Successfully reconnected. Interval set to %d", interval[0])
-                    current_interval = 0
 
                 except (ConnectionError, socket.gaierror):
-                    logger.warning("Retrying with interval: %d", interval)
-                    await anyio.sleep(interval)
-                    current_interval += 1
+                    logger.error("Timeout error. Sleeping %d seconds", RECONNECTION_INTERVAL)
+                    await anyio.sleep(RECONNECTION_INTERVAL)
 
-            raise TooManyRetries
         return wrapper
     return func_wrapper
 
 
-@retry(intervals=retry_intervals)
+@reconnect()
 async def handle_connection(
         config: tuple[str, int, int, str],
         messages_queue: Queue,
@@ -184,6 +154,17 @@ async def handle_connection(
         tg.start_soon(read_messages, host, listen_port, messages_queue, save_queue, updates_queue)
         tg.start_soon(send_messages, host, send_port, user_hash, sending_queue, updates_queue)
         tg.start_soon(watch_for_sending, host, send_port, user_hash, updates_queue)
+
+
+def read_history(filepath: str):
+    filename = f"{filepath}/logs.txt"
+
+    if not os.path.exists(filename):
+        return []
+
+    with open(filename, "r") as logs:
+        messages = [line.rstrip("\n") for line in logs.readlines()]
+        return messages
 
 
 async def main():
