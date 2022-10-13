@@ -1,10 +1,9 @@
 import json
 import logging
-import os.path
 import socket
 from argparse import ArgumentParser
 from asyncio import Queue, TimeoutError
-from os import environ
+from os import environ, path
 from tkinter import messagebox
 
 import aiofiles
@@ -16,8 +15,8 @@ from utils import open_connection, decode, format_log, encode
 
 logger = logging.getLogger("chat")
 TIMEOUT = 2
-RECONNECTION_INTERVAL = 3
-PING_PONG_INTERVAL = 5
+PING_PONG_INTERVAL = 3
+RECONNECTION_INTERVAL = 5
 
 
 class InvalidToken(Exception):
@@ -131,9 +130,8 @@ def reconnect():
             while True:
                 try:
                     await func(*args, **kwargs)
-
-                except (ConnectionError, socket.gaierror):
-                    logger.error("Timeout error. Sleeping %d seconds", RECONNECTION_INTERVAL)
+                except (ConnectionError, socket.gaierror, anyio.ExceptionGroup):
+                    logger.error("Connection error. Sleeping %d seconds before reconnection", RECONNECTION_INTERVAL)
                     await anyio.sleep(RECONNECTION_INTERVAL)
 
         return wrapper
@@ -159,7 +157,7 @@ async def handle_connection(
 def read_history(filepath: str):
     filename = f"{filepath}/logs.txt"
 
-    if not os.path.exists(filename):
+    if not path.exists(filename):
         return []
 
     with open(filename, "r") as logs:
@@ -186,11 +184,6 @@ async def main():
             tg.start_soon(draw, history, messages_queue, sending_queue, updates_queue)
             tg.start_soon(save_messages, filepath, save_queue)
             tg.start_soon(handle_connection, config, messages_queue, sending_queue, updates_queue, save_queue)
-
-    except ConnectionError:
-        messagebox.showwarning("Ошибка подключения", "Проверьте ваше интернет-соединение")
-        logger.error("ConnectionError")
-        return
 
     except InvalidToken:
         messagebox.showwarning("Неверный токен", "Проверьте токен, сервер его не узнал")

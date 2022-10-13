@@ -2,7 +2,6 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-
 ENCODING = "utf-8"
 
 
@@ -26,6 +25,3 @@ async def open_connection(host: str, port: int):
     finally:
         writer.close()
         await writer.wait_closed()
-
-
-# TODO: Обрабатывать ошибку, когда интернета нет изначально
