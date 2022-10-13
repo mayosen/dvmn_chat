@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import socket
@@ -43,8 +44,7 @@ def parse_config():
 
 
 async def read_messages(
-        host: str,
-        port: int,
+        reader: asyncio.StreamReader,
         messages_queue: Queue,
         save_queue: Queue,
         updates_queue: Queue,
@@ -52,17 +52,16 @@ async def read_messages(
     updates_queue.put_nowait(ReadConnectionStateChanged.INITIATED)
     updates_queue.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
 
-    async with open_connection(host, port) as (reader, writer):
-        while True:
-            response = await reader.readline()
-            message = decode(response)
-            messages_queue.put_nowait(message)
-            save_queue.put_nowait(message)
+    while True:
+        response = await reader.readline()
+        message = decode(response)
+        messages_queue.put_nowait(message)
+        save_queue.put_nowait(message)
 
 
 async def send_messages(
-        host: str,
-        port: int,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
         user_hash: str,
         sending_queue: Queue,
         updates_queue: Queue,
@@ -70,51 +69,54 @@ async def send_messages(
     updates_queue.put_nowait(SendingConnectionStateChanged.INITIATED)
     updates_queue.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
 
-    async with open_connection(host, port) as (reader, writer):
-        await reader.readline()
-        writer.write(encode(user_hash))
+    await reader.readline()
+    writer.write(encode(user_hash))
+    await writer.drain()
+
+    response = decode(await reader.readline())
+    user_info = json.loads(response)
+
+    if not user_info:
+        raise InvalidToken
+
+    updates_queue.put_nowait(NicknameReceived(user_info["nickname"]))
+
+    while True:
+        message = await sending_queue.get()
+        message = message.replace("\n", "")
+        writer.write(encode(f"{message}\n"))
         await writer.drain()
 
-        response = decode(await reader.readline())
-        user_info = json.loads(response)
 
-        if not user_info:
-            raise InvalidToken
-
-        updates_queue.put_nowait(NicknameReceived(user_info["nickname"]))
-
-        while True:
-            message = await sending_queue.get()
-            message = message.replace("\n", "")
-            writer.write(encode(f"{message}\n"))
-            await writer.drain()
-
-
-async def watch_for_sending(host: str, port: int, user_hash: str, updates_queue: Queue):
+async def watch_for_sending(
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        user_hash: str,
+        updates_queue: Queue
+):
     plug = encode("\n")
 
-    async with open_connection(host, port) as (reader, writer):
-        await reader.readline()
-        writer.write(encode(user_hash))
-        await writer.drain()
-        await reader.readline()
-        await reader.readline()
+    await reader.readline()
+    writer.write(encode(user_hash))
+    await writer.drain()
+    await reader.readline()
+    await reader.readline()
 
-        try:
-            while True:
-                writer.write(plug)
-                await writer.drain()
+    try:
+        while True:
+            writer.write(plug)
+            await writer.drain()
 
-                async with timeout(TIMEOUT):
-                    await reader.readline()
+            async with timeout(TIMEOUT):
+                await reader.readline()
 
-                await anyio.sleep(PING_PONG_INTERVAL)
+            await anyio.sleep(PING_PONG_INTERVAL)
 
-        except TimeoutError:
-            logger.error("Caught sending timeout")
-            updates_queue.put_nowait(SendingConnectionStateChanged.CLOSED)
-            updates_queue.put_nowait(ReadConnectionStateChanged.CLOSED)
-            raise ConnectionError
+    except TimeoutError:
+        logger.error("Caught sending timeout")
+        updates_queue.put_nowait(SendingConnectionStateChanged.CLOSED)
+        updates_queue.put_nowait(ReadConnectionStateChanged.CLOSED)
+        raise ConnectionError
 
 
 async def save_messages(filepath: str, save_queue: Queue):
@@ -149,9 +151,11 @@ async def handle_connection(
     host, listen_port, send_port, user_hash = config
 
     async with anyio.create_task_group() as tg:
-        tg.start_soon(read_messages, host, listen_port, messages_queue, save_queue, updates_queue)
-        tg.start_soon(send_messages, host, send_port, user_hash, sending_queue, updates_queue)
-        tg.start_soon(watch_for_sending, host, send_port, user_hash, updates_queue)
+        async with open_connection(host, listen_port) as (listen_reader, _):
+            async with open_connection(host, send_port) as (send_reader, send_writer):
+                tg.start_soon(read_messages, listen_reader, messages_queue, save_queue, updates_queue)
+                tg.start_soon(send_messages, send_reader, send_writer, user_hash, sending_queue, updates_queue)
+                tg.start_soon(watch_for_sending, send_reader, send_writer, user_hash, updates_queue)
 
 
 def read_history(filepath: str):
