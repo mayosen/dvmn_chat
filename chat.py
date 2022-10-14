@@ -157,8 +157,8 @@ async def handle_connection(
             nickname = await authorize(send_reader, send_writer, user_hash)
             updates_queue.put_nowait(NicknameReceived(nickname))
 
-            # tg.start_soon(send_messages, send_writer, sending_queue, updates_queue)
-            # tg.start_soon(watch_for_sending, send_reader, send_writer, updates_queue)
+            # tg.start_soon(send_messages, send_writer, sending_queue)
+            tg.start_soon(watch_for_sending, send_reader, send_writer, updates_queue)
 
 
 def read_history(filepath: str):
