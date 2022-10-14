@@ -37,11 +37,11 @@ def parse_config():
     host = args.host or environ.get("SERVER_HOST", "minechat.dvmn.org")
     listen_port = args.listen or environ.get("LISTEN_PORT", 5000)
     send_port = args.send or environ.get("SEND_PORT", 5050)
-    path = args.path or environ.get("LOG_PATH", ".")
-    path.strip("/")
+    log_path = args.path or environ.get("LOG_PATH", ".")
+    log_path.strip("/")
     user_hash = args.hash or environ.get("USER_HASH")
 
-    return path, (host, listen_port, send_port, user_hash)
+    return log_path, (host, listen_port, send_port, user_hash)
 
 
 async def authorize(reader: StreamReader, writer: StreamWriter, user_hash: str) -> str:
@@ -82,11 +82,7 @@ async def read_messages(
 async def send_messages(
         writer: StreamWriter,
         sending_queue: Queue,
-        updates_queue: Queue,
 ):
-    updates_queue.put_nowait(SendingConnectionStateChanged.INITIATED)
-    updates_queue.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
-
     while True:
         message = await sending_queue.get()
         message = message.replace("\n", "")
@@ -98,7 +94,7 @@ async def send_messages(
 async def watch_for_sending(
         reader: StreamReader,
         writer: StreamWriter,
-        updates_queue: Queue
+        updates_queue: Queue,
 ):
     plug = encode("\n")
 
@@ -154,10 +150,13 @@ async def handle_connection(
 
     async with anyio.create_task_group() as tg:
         tg.start_soon(read_messages, host, listen_port, messages_queue, save_queue, updates_queue)
+        updates_queue.put_nowait(SendingConnectionStateChanged.INITIATED)
 
         async with open_connection(host, send_port) as (send_reader, send_writer):
+            updates_queue.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
             nickname = await authorize(send_reader, send_writer, user_hash)
             updates_queue.put_nowait(NicknameReceived(nickname))
+
             # tg.start_soon(send_messages, send_writer, sending_queue, updates_queue)
             # tg.start_soon(watch_for_sending, send_reader, send_writer, updates_queue)
 
@@ -199,7 +198,7 @@ async def main():
         return
 
     except TkAppClosed:
-        logging.debug("Client has been closed")
+        logger.debug("Client has been closed")
 
 
 if __name__ == "__main__":
