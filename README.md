@@ -10,11 +10,11 @@ $ pip install -r requirements.txt
 
 Настройте скрипт через переменные окружения или аргументы CLI
 ```bash
-$ export SERVER_HOST="" \
-  LISTEN_PORT=0 \
-  SEND_PORT=0 \
-  LOG_PATH="" \
-  USER_HASH="" \
+$ export SERVER_HOST="example.com" \
+  LISTEN_PORT=10 \
+  SEND_PORT=20 \
+  LOG_PATH="." \
+  USER_HASH="hash" \
 ```
 
 Запустите проект
