@@ -55,6 +55,7 @@ async def authorize(reader: StreamReader, writer: StreamWriter, user_hash: str) 
     if not user_info:
         raise InvalidToken
 
+    watchdog.debug("Successfully authorized")
     await reader.readline()  # Welcome to chat
     return user_info["nickname"]
 
@@ -148,16 +149,15 @@ async def handle_connection(
 ):
     host, listen_port, send_port, user_hash = config
 
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(read_messages, host, listen_port, messages_queue, save_queue, updates_queue)
+    async with open_connection(host, send_port) as (send_reader, send_writer):
+        updates_queue.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
+        nickname = await authorize(send_reader, send_writer, user_hash)
         updates_queue.put_nowait(SendingConnectionStateChanged.INITIATED)
+        updates_queue.put_nowait(NicknameReceived(nickname))
 
-        async with open_connection(host, send_port) as (send_reader, send_writer):
-            updates_queue.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
-            nickname = await authorize(send_reader, send_writer, user_hash)
-            updates_queue.put_nowait(NicknameReceived(nickname))
-
-            # tg.start_soon(send_messages, send_writer, sending_queue)
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(read_messages, host, listen_port, messages_queue, save_queue, updates_queue)
+            tg.start_soon(send_messages, send_writer, sending_queue)
             tg.start_soon(watch_for_sending, send_reader, send_writer, updates_queue)
 
 
