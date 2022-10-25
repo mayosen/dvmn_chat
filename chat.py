@@ -13,7 +13,6 @@ from async_timeout import timeout
 from gui import draw, NicknameReceived, SendingConnectionStateChanged, ReadConnectionStateChanged, TkAppClosed
 from utils import open_connection, decode, format_log, encode
 
-logger = logging.getLogger("chat")
 watchdog = logging.getLogger("watchdog")
 
 TIMEOUT = 2
@@ -80,10 +79,7 @@ async def read_messages(
             save_queue.put_nowait(message)
 
 
-async def send_messages(
-        writer: StreamWriter,
-        sending_queue: Queue,
-):
+async def send_messages(writer: StreamWriter, sending_queue: Queue):
     while True:
         message = await sending_queue.get()
         message = message.replace("\n", "")
@@ -92,11 +88,7 @@ async def send_messages(
         watchdog.debug("Message sent")
 
 
-async def watch_for_sending(
-        reader: StreamReader,
-        writer: StreamWriter,
-        updates_queue: Queue,
-):
+async def watch_for_sending(reader: StreamReader, writer: StreamWriter, updates_queue: Queue):
     plug = encode("\n")
 
     try:
@@ -110,7 +102,7 @@ async def watch_for_sending(
             await anyio.sleep(PING_PONG_INTERVAL)
 
     except TimeoutError:
-        logger.error("Caught sending timeout")
+        watchdog.error("Caught sending timeout")
         updates_queue.put_nowait(SendingConnectionStateChanged.CLOSED)
         updates_queue.put_nowait(ReadConnectionStateChanged.CLOSED)
         raise ConnectionError
@@ -136,6 +128,7 @@ def reconnect():
                     await anyio.sleep(RECONNECTION_INTERVAL)
 
         return wrapper
+
     return func_wrapper
 
 
@@ -194,11 +187,11 @@ async def main():
 
     except InvalidToken:
         messagebox.showwarning("Неверный токен", "Проверьте токен, сервер его не узнал")
-        logger.error("Invalid account_hash")
+        watchdog.error("Invalid account_hash")
         return
 
     except TkAppClosed:
-        logger.debug("Client has been closed")
+        watchdog.debug("Client has been closed")
 
 
 if __name__ == "__main__":
