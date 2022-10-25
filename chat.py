@@ -188,11 +188,10 @@ async def main():
     except InvalidToken:
         messagebox.showwarning("Неверный токен", "Проверьте токен, сервер его не узнал")
         watchdog.error("Invalid account_hash")
-        return
-
-    except TkAppClosed:
-        watchdog.debug("Client has been closed")
 
 
 if __name__ == "__main__":
-    anyio.run(main)
+    try:
+        anyio.run(main)
+    except (TkAppClosed, KeyboardInterrupt):
+        watchdog.debug("Client has been closed")
