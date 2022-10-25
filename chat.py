@@ -2,7 +2,7 @@ import json
 import logging
 import socket
 from argparse import ArgumentParser
-from asyncio import Queue, TimeoutError
+from asyncio import Queue, TimeoutError, StreamReader, StreamWriter
 from os import environ, path
 from tkinter import messagebox
 
@@ -14,6 +14,8 @@ from gui import draw, NicknameReceived, SendingConnectionStateChanged, ReadConne
 from utils import open_connection, decode, format_log, encode
 
 logger = logging.getLogger("chat")
+watchdog = logging.getLogger("watchdog")
+
 TIMEOUT = 2
 PING_PONG_INTERVAL = 3
 RECONNECTION_INTERVAL = 5
@@ -35,11 +37,27 @@ def parse_config():
     host = args.host or environ.get("SERVER_HOST", "minechat.dvmn.org")
     listen_port = args.listen or environ.get("LISTEN_PORT", 5000)
     send_port = args.send or environ.get("SEND_PORT", 5050)
-    path = args.path or environ.get("LOG_PATH", ".")
-    path.strip("/")
+    log_path = args.path or environ.get("LOG_PATH", ".")
+    log_path.strip("/")
     user_hash = args.hash or environ.get("USER_HASH")
 
-    return path, (host, listen_port, send_port, user_hash)
+    return log_path, (host, listen_port, send_port, user_hash)
+
+
+async def authorize(reader: StreamReader, writer: StreamWriter, user_hash: str) -> str:
+    await reader.readline()  # Enter hash
+    writer.write(encode(user_hash))
+    await writer.drain()
+
+    response = decode(await reader.readline())  # User credentials
+    user_info = json.loads(response)
+
+    if not user_info:
+        raise InvalidToken
+
+    watchdog.debug("Successfully authorized")
+    await reader.readline()  # Welcome to chat
+    return user_info["nickname"]
 
 
 async def read_messages(
@@ -50,71 +68,52 @@ async def read_messages(
         updates_queue: Queue,
 ):
     updates_queue.put_nowait(ReadConnectionStateChanged.INITIATED)
-    updates_queue.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
 
-    async with open_connection(host, port) as (reader, writer):
+    async with open_connection(host, port) as (reader, _):
+        updates_queue.put_nowait(ReadConnectionStateChanged.ESTABLISHED)
+
         while True:
             response = await reader.readline()
+            watchdog.debug("Message received")
             message = decode(response)
             messages_queue.put_nowait(message)
             save_queue.put_nowait(message)
 
 
 async def send_messages(
-        host: str,
-        port: int,
-        user_hash: str,
+        writer: StreamWriter,
         sending_queue: Queue,
+):
+    while True:
+        message = await sending_queue.get()
+        message = message.replace("\n", "")
+        writer.write(encode(f"{message}\n"))
+        await writer.drain()
+        watchdog.debug("Message sent")
+
+
+async def watch_for_sending(
+        reader: StreamReader,
+        writer: StreamWriter,
         updates_queue: Queue,
 ):
-    updates_queue.put_nowait(SendingConnectionStateChanged.INITIATED)
-    updates_queue.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
-
-    async with open_connection(host, port) as (reader, writer):
-        await reader.readline()
-        writer.write(encode(user_hash))
-        await writer.drain()
-
-        response = decode(await reader.readline())
-        user_info = json.loads(response)
-
-        if not user_info:
-            raise InvalidToken
-
-        updates_queue.put_nowait(NicknameReceived(user_info["nickname"]))
-
-        while True:
-            message = await sending_queue.get()
-            message = message.replace("\n", "")
-            writer.write(encode(f"{message}\n"))
-            await writer.drain()
-
-
-async def watch_for_sending(host: str, port: int, user_hash: str, updates_queue: Queue):
     plug = encode("\n")
 
-    async with open_connection(host, port) as (reader, writer):
-        await reader.readline()
-        writer.write(encode(user_hash))
-        await writer.drain()
-        await reader.readline()
-        await reader.readline()
+    try:
+        while True:
+            writer.write(plug)
+            await writer.drain()
 
-        try:
-            while True:
-                writer.write(plug)
-                await writer.drain()
+            async with timeout(TIMEOUT):
+                await reader.readline()
 
-                async with timeout(TIMEOUT):
-                    await reader.readline()
+            await anyio.sleep(PING_PONG_INTERVAL)
 
-                await anyio.sleep(PING_PONG_INTERVAL)
-
-        except TimeoutError:
-            logger.error("Caught sending timeout")
-            updates_queue.put_nowait(SendingConnectionStateChanged.CLOSED)
-            updates_queue.put_nowait(ReadConnectionStateChanged.CLOSED)
-            raise ConnectionError
+    except TimeoutError:
+        logger.error("Caught sending timeout")
+        updates_queue.put_nowait(SendingConnectionStateChanged.CLOSED)
+        updates_queue.put_nowait(ReadConnectionStateChanged.CLOSED)
+        raise ConnectionError
 
 
 async def save_messages(filepath: str, save_queue: Queue):
@@ -126,12 +125,14 @@ async def save_messages(filepath: str, save_queue: Queue):
 
 def reconnect():
     def func_wrapper(func):
+        func_logger = logging.getLogger(func.__name__)
+
         async def wrapper(*args, **kwargs):
             while True:
                 try:
                     await func(*args, **kwargs)
-                except (ConnectionError, socket.gaierror, anyio.ExceptionGroup):
-                    logger.error("Connection error. Sleeping %d seconds before reconnection", RECONNECTION_INTERVAL)
+                except (ConnectionError, socket.gaierror, anyio.ExceptionGroup) as e:
+                    func_logger.error("%s. Sleeping %d seconds before reconnection", e, RECONNECTION_INTERVAL)
                     await anyio.sleep(RECONNECTION_INTERVAL)
 
         return wrapper
@@ -148,10 +149,16 @@ async def handle_connection(
 ):
     host, listen_port, send_port, user_hash = config
 
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(read_messages, host, listen_port, messages_queue, save_queue, updates_queue)
-        tg.start_soon(send_messages, host, send_port, user_hash, sending_queue, updates_queue)
-        tg.start_soon(watch_for_sending, host, send_port, user_hash, updates_queue)
+    async with open_connection(host, send_port) as (send_reader, send_writer):
+        updates_queue.put_nowait(SendingConnectionStateChanged.ESTABLISHED)
+        nickname = await authorize(send_reader, send_writer, user_hash)
+        updates_queue.put_nowait(SendingConnectionStateChanged.INITIATED)
+        updates_queue.put_nowait(NicknameReceived(nickname))
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(read_messages, host, listen_port, messages_queue, save_queue, updates_queue)
+            tg.start_soon(send_messages, send_writer, sending_queue)
+            tg.start_soon(watch_for_sending, send_reader, send_writer, updates_queue)
 
 
 def read_history(filepath: str):
@@ -191,7 +198,7 @@ async def main():
         return
 
     except TkAppClosed:
-        logging.debug("Client has been closed")
+        logger.debug("Client has been closed")
 
 
 if __name__ == "__main__":
