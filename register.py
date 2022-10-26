@@ -1,6 +1,8 @@
 import json
 import logging
 import tkinter as tk
+from argparse import ArgumentParser
+from os import environ
 from tkinter import messagebox
 
 from utils import encode, open_socket, decode
@@ -9,7 +11,19 @@ logger = logging.getLogger("register")
 PLUG = encode("")
 
 
-def register(nickname_field: tk.Entry, root: tk.Frame):
+def parse_config():
+    parser = ArgumentParser()
+    parser.add_argument("--host", type=str, help="Server host")
+    parser.add_argument("--port", type=int, help="Server send port")
+    args = parser.parse_args()
+
+    host = args.host or environ.get("SERVER_HOST", "minechat.dvmn.org")
+    port = args.port or environ.get("PORT", 5050)
+
+    return host, port
+
+
+def register(nickname_field: tk.Entry, root: tk.Frame, host: str, port: int):
     nickname = nickname_field.get()
     nickname_field.delete(0, tk.END)
 
@@ -18,7 +32,7 @@ def register(nickname_field: tk.Entry, root: tk.Frame):
         messagebox.showwarning("Пустой никнейм", "Повторите ввод")
         return
 
-    with open_socket("minechat.dvmn.org", 5050) as socket:
+    with open_socket(host, port) as socket:
         message = decode(socket.receive())
         logger.debug("message: '%s'", message)
         socket.sendall(PLUG)
@@ -40,6 +54,8 @@ def register(nickname_field: tk.Entry, root: tk.Frame):
 
 
 def main():
+    host, port = parse_config()
+
     root = tk.Tk()
     root.title("Регистрация")
     root.geometry("1000x800")
@@ -57,7 +73,7 @@ def main():
     submit_button = tk.Button(
         root_frame,
         text="Зарегистрироваться",
-        command=lambda: register(nickname_field, root_frame)
+        command=lambda: register(nickname_field, root_frame, host, port)
     )
     submit_button.pack(side=tk.TOP)
 
