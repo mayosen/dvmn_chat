@@ -18,6 +18,7 @@ watchdog = logging.getLogger("watchdog")
 TIMEOUT = 2
 PING_PONG_INTERVAL = 3
 RECONNECTION_INTERVAL = 5
+PLUG = encode("\n")
 
 
 class InvalidToken(Exception):
@@ -89,11 +90,9 @@ async def send_messages(writer: StreamWriter, sending_queue: Queue):
 
 
 async def watch_for_sending(reader: StreamReader, writer: StreamWriter, updates_queue: Queue):
-    plug = encode("\n")
-
     try:
         while True:
-            writer.write(plug)
+            writer.write(PLUG)
             await writer.drain()
 
             async with timeout(TIMEOUT):
@@ -115,24 +114,21 @@ async def save_messages(filepath: str, save_queue: Queue):
             await logs.write(format_log(message))
 
 
-def reconnect():
-    def func_wrapper(func):
-        func_logger = logging.getLogger(func.__name__)
+def reconnect(func):
+    func_logger = logging.getLogger(func.__name__)
 
-        async def wrapper(*args, **kwargs):
-            while True:
-                try:
-                    await func(*args, **kwargs)
-                except (ConnectionError, socket.gaierror, anyio.ExceptionGroup) as e:
-                    func_logger.error("%s. Sleeping %d seconds before reconnection", e, RECONNECTION_INTERVAL)
-                    await anyio.sleep(RECONNECTION_INTERVAL)
+    async def wrapper(*args, **kwargs):
+        while True:
+            try:
+                await func(*args, **kwargs)
+            except (ConnectionError, socket.gaierror, anyio.ExceptionGroup) as e:
+                func_logger.error("%s. Sleeping %d seconds before reconnection", e, RECONNECTION_INTERVAL)
+                await anyio.sleep(RECONNECTION_INTERVAL)
 
-        return wrapper
-
-    return func_wrapper
+    return wrapper
 
 
-@reconnect()
+@reconnect
 async def handle_connection(
         config: tuple[str, int, int, str],
         messages_queue: Queue,
