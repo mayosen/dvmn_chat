@@ -9,8 +9,9 @@ logger = logging.getLogger("register")
 PLUG = encode("")
 
 
-def register(nickname: str, path: str, root: tk.Frame):
-    path = f"{path or '.'}/credentials.json"
+def register(nickname_field: tk.Entry, root: tk.Frame):
+    nickname = nickname_field.get()
+    nickname_field.delete(0, tk.END)
 
     if not nickname:
         logger.error("Empty nickname")
@@ -29,10 +30,11 @@ def register(nickname: str, path: str, root: tk.Frame):
         data = message.split("\n")[0]
         credentials = json.loads(data)
 
+    path = "credentials.json"
     with open(path, "w") as file:
         json.dump(credentials, file, indent=4)
 
-    messagebox.showinfo("Успешно", f"Учетные данные сохранены в {path}.")
+    messagebox.showinfo("Успешно", f"Учетные данные сохранены в файл {path}.")
     logger.debug("Successfully shutting down")
     root.quit()
 
@@ -43,28 +45,21 @@ def main():
     root.geometry("1000x800")
 
     root_frame = tk.Frame()
-    root_frame.pack(fill=tk.Y, expand=True)
+    root_frame.pack(fill=tk.BOTH, expand=True)
 
     nickname_frame = tk.Frame(root_frame)
-    nickname_frame.pack(side=tk.TOP)
+    nickname_frame.pack(side=tk.TOP, pady=25)
     nickname_label = tk.Label(nickname_frame, text="Желаемый никнейм")
-    nickname_label.pack(side=tk.LEFT, fill=tk.X)
+    nickname_label.pack(side=tk.LEFT, fill=tk.X, pady=25, padx=25)
     nickname_field = tk.Entry(nickname_frame)
-    nickname_field.pack(side=tk.RIGHT, fill=tk.X, expand=True)
-
-    path_frame = tk.Frame(root_frame)
-    path_frame.pack(side=tk.TOP)
-    path_label = tk.Label(path_frame, text="Путь для сохранения учетных данных")
-    path_label.pack(side=tk.LEFT, fill=tk.X)
-    path_field = tk.Entry(path_frame)
-    path_field.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+    nickname_field.pack(side=tk.RIGHT, fill=tk.X)
 
     submit_button = tk.Button(
         root_frame,
         text="Зарегистрироваться",
-        command=lambda: register(nickname_field.get(), path_field.get(), root_frame)
+        command=lambda: register(nickname_field, root_frame)
     )
-    submit_button.pack(side=tk.BOTTOM)
+    submit_button.pack(side=tk.TOP)
 
     root_frame.mainloop()
 
