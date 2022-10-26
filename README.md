@@ -10,8 +10,17 @@
 $ export SERVER_HOST="example.com" PORT=10
 $ python register.py
 ```
-После запуска введите желаемый никнейм.  
+После запуска введите желаемый никнейм.
+
+<img src="img/register.png" alt="registration example" height="200" width="380">
+
 Полученные учетные данные будут сохранены в файл `credentials.json`.
+```json
+{
+    "nickname": "Goofy Denis",
+    "account_hash": "ec8480ec-550a-11ed-8c47-0242ac110002"
+}
+```
 
 ## Запуск
 Установите зависимости
@@ -33,3 +42,5 @@ $ export \
 ```bash
 $ python chat.py
 ```
+
+<img src="img/chat.png" alt="chat example" height="410" width="560">

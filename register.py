@@ -58,7 +58,7 @@ def main():
 
     root = tk.Tk()
     root.title("Регистрация")
-    root.geometry("1000x800")
+    root.geometry("900x400")
 
     root_frame = tk.Frame()
     root_frame.pack(fill=tk.BOTH, expand=True)
