@@ -1,6 +1,8 @@
 # Chat
 Урок 5. Помогаем клубу анонимных геймеров.  
-Курс "Асинхронный Python" от [Devman](https://dvmn.org/modules/async-python/).
+Курс "Асинхронный Python" от [Devman](https://dvmn.org/modules/async-python/).  
+  
+*Урок 4. Подключаемся к подпольному чату в [Releases](https://github.com/mayosen/dvmn_chat/tree/28e1698469501825dffb5a9aa819172c5583eae0).*
 
 ## Регистрация в чате
 Для регистрации используется вспомогательный скрипт.  
