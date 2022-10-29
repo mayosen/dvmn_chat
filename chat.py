@@ -107,10 +107,10 @@ async def watch_for_sending(reader: StreamReader, writer: StreamWriter, updates_
         raise ConnectionError
 
 
-async def save_messages(filepath: str, save_queue: Queue):
+async def save_messages(filepath: str, saving_queue: Queue):
     async with aiofiles.open(f"{filepath}/logs.txt", "a") as logs:
         while True:
-            message = await save_queue.get()
+            message = await saving_queue.get()
             await logs.write(format_log(message))
 
 
@@ -134,7 +134,7 @@ async def handle_connection(
         messages_queue: Queue,
         sending_queue: Queue,
         updates_queue: Queue,
-        save_queue: Queue,
+        saving_queue: Queue,
 ):
     host, listen_port, send_port, user_hash = config
 
@@ -145,7 +145,7 @@ async def handle_connection(
         updates_queue.put_nowait(NicknameReceived(nickname))
 
         async with anyio.create_task_group() as tg:
-            tg.start_soon(read_messages, host, listen_port, messages_queue, save_queue, updates_queue)
+            tg.start_soon(read_messages, host, listen_port, messages_queue, saving_queue, updates_queue)
             tg.start_soon(send_messages, send_writer, sending_queue)
             tg.start_soon(watch_for_sending, send_reader, send_writer, updates_queue)
 
@@ -173,13 +173,13 @@ async def main():
     messages_queue = Queue()
     sending_queue = Queue()
     updates_queue = Queue()
-    save_queue = Queue()
+    saving_queue = Queue()
 
     try:
         async with anyio.create_task_group() as tg:
             tg.start_soon(draw, history, messages_queue, sending_queue, updates_queue)
-            tg.start_soon(save_messages, filepath, save_queue)
-            tg.start_soon(handle_connection, config, messages_queue, sending_queue, updates_queue, save_queue)
+            tg.start_soon(save_messages, filepath, saving_queue)
+            tg.start_soon(handle_connection, config, messages_queue, sending_queue, updates_queue, saving_queue)
 
     except InvalidToken:
         messagebox.showwarning("Неверный токен", "Проверьте токен, сервер его не узнал")
