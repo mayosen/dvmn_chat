@@ -1,63 +1,48 @@
 # Chat
-Подключаемся к подпольному чату.  
-Урок 4 курса Асинхронный Python от Devman.
+Урок 5. Помогаем клубу анонимных геймеров.  
+Курс "Асинхронный Python" от [Devman](https://dvmn.org/modules/async-python/).  
+  
+*Урок 4. Подключаемся к подпольному чату в [Releases](https://github.com/mayosen/dvmn_chat/tree/28e1698469501825dffb5a9aa819172c5583eae0).*
 
-## Зависимости
+## Регистрация в чате
+Для регистрации используется вспомогательный скрипт.  
+Настройте его через переменные окружения или аргументы CLI.
+
+```bash
+$ export SERVER_HOST="example.com" PORT=10
+$ python register.py
+```
+После запуска введите желаемый никнейм.
+
+<img src="img/register.png" alt="registration example" height="200" width="380">
+
+Полученные учетные данные будут сохранены в файл `credentials.json`.
+```json
+{
+    "nickname": "Goofy Denis",
+    "account_hash": "ec8480ec-550a-11ed-8c47-0242ac110002"
+}
+```
+
+## Запуск
 Установите зависимости
 ```bash
 $ pip install -r requirements.txt
 ```
 
-## Запуск
-
-### listener.py
-Настройте скрипт через переменные окружения
+Настройте скрипт через переменные окружения или аргументы CLI
 ```bash
-$ export SERVER_HOST="" SERVER_PORT=0 HISTORY_PATH=""
-```
-
-Или через аргументы командной строки
-```
-usage: listener.py [-h] [--host HOST] [--port PORT]
-                   [--history HISTORY]
-
-options:
-  -h, --help         show this help message and exit
-  --host HOST        Server host
-  --port PORT        Server port
-  --history HISTORY  Path to logs
+$ export \
+      SERVER_HOST="example.com" \
+      LISTEN_PORT=10 \
+      SEND_PORT=20 \
+      LOG_PATH="." \
+      USER_HASH="hash"
 ```
 
 Запустите проект
 ```bash
-$ python listener.py
+$ python chat.py
 ```
 
-### sender.py
-Настройте скрипт через переменные окружения
-```bash
-$ export SERVER_HOST="" SERVER_PORT=0 USER_HASH="" NICKNAME="" MESSAGE=""
-```
-
-Или через аргументы командной строки
-```
-usage: sender.py [-h] [--host HOST] [--port PORT]
-                 [--hash HASH] [--nickname NICKNAME]
-                 [--message MESSAGE]
-
-Pass exactly one option: --hash or --nickname.
-
-options:
-  -h, --help           show this help message and exit
-  --host HOST          Server host
-  --port PORT          Server port
-  --hash HASH          Account hash to access host
-  --nickname NICKNAME  Preferred nickname to register
-  --message MESSAGE    Message to send
-
-```
-
-Запустите проект
-```bash
-$ python sender.py --nickname Devman --message "Vsem privet"
-```
+<img src="img/chat.png" alt="chat example" height="410" width="560">
